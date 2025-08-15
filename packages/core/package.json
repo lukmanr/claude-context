@@ -32,7 +32,8 @@
         "tree-sitter-typescript": "^0.21.0",
         "tree-sitter-scala": "^0.24.0",
         "typescript": "^5.0.0",
-        "voyageai": "^0.0.4"
+        "voyageai": "^0.0.4",
+        "chromadb": "^1.8.1"
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.0",

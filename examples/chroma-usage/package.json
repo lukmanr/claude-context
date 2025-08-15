@@ -1,0 +1,19 @@
+{
+    "name": "chroma-usage-example",
+    "version": "1.0.0",
+    "description": "Example usage of Claude Context with Chroma vector database",
+    "main": "index.ts",
+    "scripts": {
+        "dev": "tsx watch index.ts",
+        "start": "tsx index.ts",
+        "build": "tsc"
+    },
+    "dependencies": {
+        "@zilliz/claude-context-core": "workspace:*",
+        "chromadb": "^1.8.1"
+    },
+    "devDependencies": {
+        "tsx": "^4.0.0",
+        "typescript": "^5.0.0"
+    }
+}
