@@ -70,6 +70,16 @@ export class ChromaVectorDatabase implements VectorDatabase {
         }
 
         console.log(`🔌 Connected to Chroma at: ${this.config.path || 'http://localhost:8000'}`);
+        
+        // Test the connection
+        try {
+            console.log(`🏥 Testing ChromaDB connection...`);
+            const heartbeat = await this.client.heartbeat();
+            console.log(`✅ ChromaDB heartbeat successful:`, heartbeat);
+        } catch (error: any) {
+            console.error(`❌ ChromaDB heartbeat failed:`, error);
+            throw new Error(`Failed to connect to ChromaDB: ${error?.message || 'Unknown error'}`);
+        }
     }
 
     /**
@@ -78,8 +88,10 @@ export class ChromaVectorDatabase implements VectorDatabase {
     protected async ensureInitialized(): Promise<void> {
         await this.initializationPromise;
         if (!this.client) {
+            console.error(`❌ Chroma client not initialized - call initialize() first`);
             throw new Error('Chroma client not initialized');
         }
+        console.log(`✅ ChromaDB client is initialized and ready`);
     }
 
     async createCollection(collectionName: string, dimension: number, description?: string): Promise<void> {
@@ -104,6 +116,11 @@ export class ChromaVectorDatabase implements VectorDatabase {
 
             console.log(`✅ Successfully created collection '${collectionName}'`);
         } catch (error: any) {
+            // Handle "collection already exists" gracefully
+            if (error.message && error.message.includes('already exists')) {
+                console.log(`ℹ️  Collection '${collectionName}' already exists, continuing with existing collection`);
+                return; // Don't throw, just continue
+            }
             console.error(`❌ Failed to create collection '${collectionName}':`, error);
             throw error;
         }
@@ -169,7 +186,9 @@ export class ChromaVectorDatabase implements VectorDatabase {
         await this.ensureInitialized();
 
         try {
+            console.log(`📥 Attempting to insert ${documents.length} documents into collection '${collectionName}'`);
             const collection = await this.getCollection(collectionName);
+            console.log(`✅ Retrieved collection '${collectionName}' for insertion`);
 
             // Transform VectorDocument array to Chroma format
             const ids = documents.map(doc => doc.id);
