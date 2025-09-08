@@ -151,7 +151,7 @@ export class ChromaVectorDatabase implements VectorDatabase {
 
         try {
             const collections = await this.client!.listCollections();
-            return collections.some(collection => collection.name === collectionName);
+            return collections.includes(collectionName);
         } catch (error: any) {
             console.error(`❌ Failed to check collection '${collectionName}' existence:`, error);
             return false;
@@ -163,7 +163,7 @@ export class ChromaVectorDatabase implements VectorDatabase {
 
         try {
             const collections = await this.client!.listCollections();
-            return collections.map(collection => collection.name);
+            return collections;
         } catch (error: any) {
             console.error(`❌ Failed to list collections:`, error);
             throw error;
@@ -172,10 +172,15 @@ export class ChromaVectorDatabase implements VectorDatabase {
 
     private async getCollection(collectionName: string): Promise<Collection> {
         try {
-            return await this.client!.getCollection({
+            const config: any = {
                 name: collectionName,
-                embeddingFunction: this.embeddingFunction || undefined,
-            });
+            };
+            
+            if (this.embeddingFunction) {
+                config.embeddingFunction = this.embeddingFunction;
+            }
+            
+            return await this.client!.getCollection(config);
         } catch (error: any) {
             console.error(`❌ Failed to get collection '${collectionName}':`, error);
             throw error;
@@ -259,10 +264,10 @@ export class ChromaVectorDatabase implements VectorDatabase {
                             id: results.ids[0][i],
                             vector: queryVector,
                             content: document,
-                            relativePath: metadata.relativePath || '',
-                            startLine: metadata.startLine || 0,
-                            endLine: metadata.endLine || 0,
-                            fileExtension: metadata.fileExtension || '',
+                            relativePath: typeof metadata.relativePath === 'string' ? metadata.relativePath : '',
+                            startLine: typeof metadata.startLine === 'number' ? metadata.startLine : 0,
+                            endLine: typeof metadata.endLine === 'number' ? metadata.endLine : 0,
+                            fileExtension: typeof metadata.fileExtension === 'string' ? metadata.fileExtension : '',
                             metadata: Object.fromEntries(
                                 Object.entries(metadata).filter(([key]) => 
                                     !['relativePath', 'startLine', 'endLine', 'fileExtension'].includes(key)
@@ -336,10 +341,10 @@ export class ChromaVectorDatabase implements VectorDatabase {
                                     id: textResults.ids[0][i],
                                     vector: [],
                                     content: document,
-                                    relativePath: metadata.relativePath || '',
-                                    startLine: metadata.startLine || 0,
-                                    endLine: metadata.endLine || 0,
-                                    fileExtension: metadata.fileExtension || '',
+                                    relativePath: typeof metadata.relativePath === 'string' ? metadata.relativePath : '',
+                                    startLine: typeof metadata.startLine === 'number' ? metadata.startLine : 0,
+                                    endLine: typeof metadata.endLine === 'number' ? metadata.endLine : 0,
+                                    fileExtension: typeof metadata.fileExtension === 'string' ? metadata.fileExtension : '',
                                     metadata: Object.fromEntries(
                                         Object.entries(metadata).filter(([key]) => 
                                             !['relativePath', 'startLine', 'endLine', 'fileExtension'].includes(key)
