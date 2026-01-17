@@ -16,7 +16,7 @@ export interface ContextMcpConfig {
     ollamaModel?: string;
     ollamaHost?: string;
     // Vector database configuration
-    vectorDatabaseProvider: 'milvus' | 'postgres';
+    vectorDatabaseProvider: 'milvus' | 'postgres' | 'chroma';
     milvusAddress?: string; // Optional, can be auto-resolved from token
     milvusToken?: string;
     // PostgreSQL configuration
@@ -27,6 +27,8 @@ export interface ContextMcpConfig {
     postgresUsername?: string;
     postgresPassword?: string;
     postgresSSL?: boolean;
+    // ChromaDB configuration
+    chromaPath?: string; // Path to store ChromaDB data (default: ~/.velocity/chroma)
 }
 
 // Legacy format (v1) - for backward compatibility
@@ -122,6 +124,7 @@ export function createMcpConfig(): ContextMcpConfig {
     console.log(`[DEBUG]   VECTOR_DATABASE_PROVIDER: ${envManager.get('VECTOR_DATABASE_PROVIDER') || 'NOT SET'}`);
     console.log(`[DEBUG]   MILVUS_ADDRESS: ${envManager.get('MILVUS_ADDRESS') || 'NOT SET'}`);
     console.log(`[DEBUG]   POSTGRES_CONNECTION_STRING: ${envManager.get('POSTGRES_CONNECTION_STRING') ? 'SET' : 'NOT SET'}`);
+    console.log(`[DEBUG]   CHROMA_PATH: ${envManager.get('CHROMA_PATH') || 'NOT SET'}`);
     console.log(`[DEBUG]   NODE_ENV: ${envManager.get('NODE_ENV') || 'NOT SET'}`);
 
     const config: ContextMcpConfig = {
@@ -140,7 +143,7 @@ export function createMcpConfig(): ContextMcpConfig {
         ollamaModel: envManager.get('OLLAMA_MODEL'),
         ollamaHost: envManager.get('OLLAMA_HOST'),
         // Vector database configuration
-        vectorDatabaseProvider: (envManager.get('VECTOR_DATABASE_PROVIDER') as 'milvus' | 'postgres') || 'milvus',
+        vectorDatabaseProvider: (envManager.get('VECTOR_DATABASE_PROVIDER') as 'milvus' | 'postgres' | 'chroma') || 'milvus',
         milvusAddress: envManager.get('MILVUS_ADDRESS'), // Optional, can be resolved from token
         milvusToken: envManager.get('MILVUS_TOKEN'),
         // PostgreSQL configuration
@@ -150,7 +153,9 @@ export function createMcpConfig(): ContextMcpConfig {
         postgresDatabase: envManager.get('POSTGRES_DATABASE'),
         postgresUsername: envManager.get('POSTGRES_USERNAME'),
         postgresPassword: envManager.get('POSTGRES_PASSWORD'),
-        postgresSSL: envManager.get('POSTGRES_SSL') === 'true'
+        postgresSSL: envManager.get('POSTGRES_SSL') === 'true',
+        // ChromaDB configuration
+        chromaPath: envManager.get('CHROMA_PATH')
     };
 
     return config;
@@ -169,6 +174,9 @@ export function logConfigurationSummary(config: ContextMcpConfig): void {
     if (config.vectorDatabaseProvider === 'postgres') {
         console.log(`[MCP]   PostgreSQL Connection: ${config.postgresConnectionString ? '✅ Connection string configured' :
             (config.postgresHost ? `${config.postgresHost}:${config.postgresPort || 5432}/${config.postgresDatabase || 'postgres'}` : '❌ Not configured')}`);
+    } else if (config.vectorDatabaseProvider === 'chroma') {
+        console.log(`[MCP]   ChromaDB Path: ${config.chromaPath || '~/.velocity/chroma (default)'}`);
+        console.log(`[MCP]   ChromaDB server will be started automatically`);
     } else {
         console.log(`[MCP]   Milvus Address: ${config.milvusAddress || (config.milvusToken ? '[Auto-resolve from token]' : '[Not configured]')}`);
     }
@@ -228,7 +236,7 @@ Environment Variables:
   OLLAMA_MODEL            Ollama model name (alternative to EMBEDDING_MODEL for Ollama)
   
   Vector Database Configuration:
-  VECTOR_DATABASE_PROVIDER Vector database provider: milvus, postgres (default: milvus)
+  VECTOR_DATABASE_PROVIDER Vector database provider: milvus, postgres, chroma (default: milvus)
   
   Milvus Configuration:
   MILVUS_ADDRESS          Milvus address (optional, can be auto-resolved from token)
@@ -242,6 +250,10 @@ Environment Variables:
   POSTGRES_USERNAME       PostgreSQL username (default: postgres)
   POSTGRES_PASSWORD       PostgreSQL password
   POSTGRES_SSL            Enable SSL connection (true/false, default: false)
+  
+  ChromaDB Configuration:
+  CHROMA_PATH             Path to store ChromaDB data (default: ~/.velocity/chroma)
+                          Note: ChromaDB server is started automatically by the MCP server
 
 Examples:
   # Start MCP server with OpenAI (default) and explicit Milvus address
@@ -264,5 +276,11 @@ Examples:
   
   # Start MCP server with Ollama and specific model (using EMBEDDING_MODEL)
   EMBEDDING_PROVIDER=Ollama EMBEDDING_MODEL=nomic-embed-text MILVUS_TOKEN=your-token npx @zilliz/claude-context-mcp@latest
+  
+  # Start MCP server with ChromaDB (file-based local storage, server started automatically)
+  OPENAI_API_KEY=sk-xxx VECTOR_DATABASE_PROVIDER=chroma npx @zilliz/claude-context-mcp@latest
+  
+  # Start MCP server with ChromaDB and custom storage path
+  OPENAI_API_KEY=sk-xxx VECTOR_DATABASE_PROVIDER=chroma CHROMA_PATH=/custom/path/chroma npx @zilliz/claude-context-mcp@latest
         `);
 } 

@@ -154,6 +154,9 @@ importers:
       '@zilliz/milvus2-sdk-node':
         specifier: ^2.5.10
         version: 2.5.10
+      chromadb:
+        specifier: 3.2.2
+        version: 3.2.2
       faiss-node:
         specifier: ^0.5.1
         version: 0.5.1
@@ -1729,6 +1732,41 @@ packages:
 
   chownr@1.1.4:
     resolution: {integrity: sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg==}
+
+  chromadb-js-bindings-darwin-arm64@1.2.1:
+    resolution: {integrity: sha512-h/xk938Dt/WRUdt8RN/YGMn3BPcRYH0M0dzoEL5R7ZEZRsrdUsGCKtvwUuVMFuh7Zi7+nmE79I2m7cqnFHh7oQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  chromadb-js-bindings-darwin-x64@1.2.1:
+    resolution: {integrity: sha512-yIlee4W36hw3g2nn85dbYsggda3kzse47/3My8+bsa2dFH/W/LPpQlVy1kWEZMffRV8GHt1Zrpsv83TApIcggw==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  chromadb-js-bindings-linux-arm64-gnu@1.2.1:
+    resolution: {integrity: sha512-oAJSsiXhlgWOmIG7gMu16YjI2n2Vz8NSsooCq/ZnkEYoYbaU0KQZmMLLh0dFt63SEAHrabfTttwDhIjIkJ+/dw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+
+  chromadb-js-bindings-linux-x64-gnu@1.2.1:
+    resolution: {integrity: sha512-hu9Wg8J9narhYDbckNtTT4H3xt7oN37XMKjC2YenA8JFxaPDT8JXoX3NcA/64eqi33SB8tf7Dn12Ys90Jp60GA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+
+  chromadb-js-bindings-win32-x64-msvc@1.2.1:
+    resolution: {integrity: sha512-4Eect14iwSNJ9vuh8PQMwKkf2YqlnIvcJ2h0wSEiCD4qUFw9WeSsNvP7U/fRiRhSMhEKBCNnhe0AGiOX9XMN2w==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  chromadb@3.2.2:
+    resolution: {integrity: sha512-0Jp0uX1cr74hcK3N/Uk55ae/lqjDi3PY3g0ggplojlLCJ1elwbTU4V1gfzDenxZLrqoFWvmRa7JZPAFBA0oklQ==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   chrome-trace-event@1.0.4:
     resolution: {integrity: sha512-rNjApaLzuwaOTjCiT8lSDdGN1APCiqkChLMJxJPWLunPAt5fy8xgU9/jNOchV84wfIxrA0lRQB7oCT8jrn/wrQ==}
@@ -6180,6 +6218,31 @@ snapshots:
       whatwg-mimetype: 4.0.0
 
   chownr@1.1.4: {}
+
+  chromadb-js-bindings-darwin-arm64@1.2.1:
+    optional: true
+
+  chromadb-js-bindings-darwin-x64@1.2.1:
+    optional: true
+
+  chromadb-js-bindings-linux-arm64-gnu@1.2.1:
+    optional: true
+
+  chromadb-js-bindings-linux-x64-gnu@1.2.1:
+    optional: true
+
+  chromadb-js-bindings-win32-x64-msvc@1.2.1:
+    optional: true
+
+  chromadb@3.2.2:
+    dependencies:
+      semver: 7.7.2
+    optionalDependencies:
+      chromadb-js-bindings-darwin-arm64: 1.2.1
+      chromadb-js-bindings-darwin-x64: 1.2.1
+      chromadb-js-bindings-linux-arm64-gnu: 1.2.1
+      chromadb-js-bindings-linux-x64-gnu: 1.2.1
+      chromadb-js-bindings-win32-x64-msvc: 1.2.1
 
   chrome-trace-event@1.0.4: {}
 

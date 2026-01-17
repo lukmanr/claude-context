@@ -49,7 +49,7 @@ import {
     ListToolsRequestSchema,
     CallToolRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
-import { Context, MilvusVectorDatabase, PostgresVectorDatabase, VectorDatabase } from "@zilliz/claude-context-core";
+import { Context, MilvusVectorDatabase, PostgresVectorDatabase, ChromaVectorDatabase, VectorDatabase } from "@zilliz/claude-context-core";
 
 // Import our modular components
 import { createMcpConfig, logConfigurationSummary, showHelpMessage, ContextMcpConfig } from "./config.js";
@@ -98,6 +98,11 @@ class ContextMcpServer {
                 username: config.postgresUsername,
                 password: config.postgresPassword,
                 ssl: config.postgresSSL
+            });
+        } else if (config.vectorDatabaseProvider === 'chroma') {
+            console.log(`[VECTOR_DB] Initializing ChromaDB vector database...`);
+            vectorDatabase = new ChromaVectorDatabase({
+                path: config.chromaPath
             });
         } else {
             console.log(`[VECTOR_DB] Initializing Milvus vector database...`);

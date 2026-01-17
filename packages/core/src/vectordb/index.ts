@@ -15,6 +15,7 @@ export {
 export { MilvusRestfulVectorDatabase, MilvusRestfulConfig } from './milvus-restful-vectordb';
 export { MilvusVectorDatabase, MilvusConfig } from './milvus-vectordb';
 export { PostgresVectorDatabase, PostgresConfig } from './postgres-vectordb';
+export { ChromaVectorDatabase, ChromaConfig } from './chroma-vectordb';
 export {
     ClusterManager,
     ZillizConfig,
