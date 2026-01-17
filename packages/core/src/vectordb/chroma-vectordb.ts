@@ -49,6 +49,8 @@ export class ChromaVectorDatabase implements VectorDatabase {
     private serverProcess: ChildProcess | null = null;
     private static serverStarted: boolean = false;
     private static serverProcess: ChildProcess | null = null;
+    // Lock to prevent multiple concurrent server start attempts
+    private static serverStartPromise: Promise<void> | null = null;
 
     constructor(config: ChromaConfig) {
         this.config = config;
@@ -76,8 +78,16 @@ export class ChromaVectorDatabase implements VectorDatabase {
 
     /**
      * Ensure ChromaDB server is running, starting it if necessary
+     * Uses a lock to prevent multiple concurrent server start attempts
      */
     private async ensureServerRunning(): Promise<void> {
+        // If another call is already starting the server, wait for it
+        if (ChromaVectorDatabase.serverStartPromise) {
+            console.log(`⏳ Waiting for ChromaDB server startup (already in progress)...`);
+            await ChromaVectorDatabase.serverStartPromise;
+            return;
+        }
+
         // Check if server is already running (either started by us or externally)
         if (await this.isServerRunning()) {
             console.log(`✅ ChromaDB server already running at ${this.chromaHost}:${this.chromaPort}`);
@@ -92,15 +102,24 @@ export class ChromaVectorDatabase implements VectorDatabase {
 
         console.log(`🚀 Starting ChromaDB server at ${this.chromaHost}:${this.chromaPort} with data path: ${this.chromaPath}`);
 
-        await this.startServer();
+        // Create a promise that other callers can wait on
+        ChromaVectorDatabase.serverStartPromise = this.startServer();
+        
+        try {
+            await ChromaVectorDatabase.serverStartPromise;
+        } finally {
+            // Clear the promise after completion (success or failure)
+            ChromaVectorDatabase.serverStartPromise = null;
+        }
     }
 
     /**
      * Check if ChromaDB server is running by attempting to connect
+     * Uses the v2 API heartbeat endpoint (v1 is deprecated in ChromaDB 3.x)
      */
     private async isServerRunning(): Promise<boolean> {
         try {
-            const response = await fetch(`http://${this.chromaHost}:${this.chromaPort}/api/v1/heartbeat`, {
+            const response = await fetch(`http://${this.chromaHost}:${this.chromaPort}/api/v2/heartbeat`, {
                 method: 'GET',
                 signal: AbortSignal.timeout(2000)
             });
