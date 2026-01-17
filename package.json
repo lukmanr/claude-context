@@ -47,5 +47,9 @@
         "url": "https://github.com/zilliztech/claude-context.git"
     },
     "license": "MIT",
-    "author": "Cheney Zhang <277584121@qq.com>"
+    "author": "Cheney Zhang <277584121@qq.com>",
+    "dependencies": {
+        "@chroma-core/default-embed": "^0.1.9",
+        "chromadb": "3.2.2"
+    }
 }

@@ -24,6 +24,12 @@ export interface ChromaConfig {
     batchSize?: number;
     /** Skip spawning server (useful if server is managed externally) */
     skipServerSpawn?: boolean;
+    /** HNSW ef_search parameter - higher = more accurate but slower (default: 100) */
+    hnswEfSearch?: number;
+    /** HNSW batch_size for indexing (default: 1000) */
+    hnswBatchSize?: number;
+    /** HNSW num_threads for indexing, 0 = auto (default: 0) */
+    hnswNumThreads?: number;
 }
 
 /**
@@ -106,12 +112,13 @@ export class ChromaVectorDatabase implements VectorDatabase {
 
     /**
      * Start the ChromaDB server process
+     * Uses the chromadb npm package's native bindings (Rust-compiled)
      */
     private async startServer(): Promise<void> {
         return new Promise((resolve, reject) => {
-            // Use npx to run chroma
+            // Use npx chromadb (native bindings) to run the server
             const chromaProcess = spawn('npx', [
-                'chroma', 'run',
+                'chromadb', 'run',
                 '--path', this.chromaPath,
                 '--port', this.chromaPort.toString(),
                 '--host', this.chromaHost
@@ -268,11 +275,13 @@ export class ChromaVectorDatabase implements VectorDatabase {
     }
 
     private async initializeClient(): Promise<void> {
-        console.log(`🔌 Connecting to ChromaDB at: http://${this.chromaHost}:${this.chromaPort}`);
+        console.log(`🔌 Connecting to ChromaDB at: ${this.chromaHost}:${this.chromaPort}`);
         
-        // Initialize ChromaDB client
+        // Initialize ChromaDB client using the new host/port configuration (3.x API)
+        // Note: 'path' param is deprecated in chromadb 3.x
         this.client = new ChromaClient({
-            path: `http://${this.chromaHost}:${this.chromaPort}`
+            host: this.chromaHost,
+            port: this.chromaPort
         });
 
         // Verify connection by listing collections
@@ -339,20 +348,36 @@ export class ChromaVectorDatabase implements VectorDatabase {
         const sanitizedName = this.sanitizeCollectionName(collectionName);
 
         try {
-            console.log(`[ChromaDB] Creating collection '${sanitizedName}' (original: ${collectionName}) with dimension ${dimension}`);
+            console.log(`[ChromaDB] Creating collection '${sanitizedName}' (original: ${collectionName}) with dimension ${dimension}, cosine distance`);
             
             // ChromaDB automatically creates the collection if it doesn't exist
+            // Configure with cosine distance metric and optimized HNSW parameters
             await this.client!.getOrCreateCollection({
                 name: sanitizedName,
                 metadata: {
                     description: description || `Claude Context collection: ${collectionName}`,
                     originalName: collectionName,
                     dimension: dimension.toString(),
-                    createdAt: new Date().toISOString()
+                    createdAt: new Date().toISOString(),
+                    // Configure HNSW with cosine distance for semantic similarity
+                    'hnsw:space': 'cosine'
+                },
+                // HNSW configuration for better search performance
+                // These are tuned for code search workloads
+                configuration: {
+                    hnsw: {
+                        // ef_search: higher = more accurate but slower (default: 10)
+                        // For code search, accuracy is important
+                        ef_search: this.config.hnswEfSearch ?? 100,
+                        // batch_size: documents processed per batch during indexing
+                        batch_size: this.config.hnswBatchSize ?? 1000,
+                        // num_threads: parallel threads for indexing (0 = auto)
+                        num_threads: this.config.hnswNumThreads ?? 0
+                    }
                 }
             });
 
-            console.log(`✅ ChromaDB collection '${sanitizedName}' created successfully with dimension ${dimension}`);
+            console.log(`✅ ChromaDB collection '${sanitizedName}' created successfully with dimension ${dimension}, cosine distance, HNSW index`);
         } catch (error) {
             console.error(`❌ Failed to create collection '${collectionName}':`, error);
             throw error;
@@ -514,11 +539,11 @@ export class ChromaVectorDatabase implements VectorDatabase {
             const metadatas = results.metadatas?.[0] || [];
 
             for (let i = 0; i < ids.length; i++) {
-                // ChromaDB returns L2 distance by default, convert to similarity score
-                // For cosine distance: similarity = 1 - distance (if using cosine)
-                // For L2 distance: we can use 1 / (1 + distance) as approximation
+                // ChromaDB with cosine distance returns distance = 1 - cosine_similarity
+                // So similarity = 1 - distance
+                // Clamp to [0, 1] range to handle floating point imprecision
                 const distance = distances[i] || 0;
-                const score = 1 / (1 + distance);
+                const score = Math.max(0, Math.min(1, 1 - distance));
 
                 // Apply threshold filter
                 if (score < threshold) {
@@ -607,8 +632,10 @@ export class ChromaVectorDatabase implements VectorDatabase {
             const metadatas = results.metadatas?.[0] || [];
 
             for (let i = 0; i < ids.length; i++) {
+                // ChromaDB with cosine distance returns distance = 1 - cosine_similarity
+                // So similarity = 1 - distance
                 const distance = distances[i] || 0;
-                const score = 1 / (1 + distance);
+                const score = Math.max(0, Math.min(1, 1 - distance));
                 const metadata = metadatas[i] || {};
 
                 hybridResults.push({
