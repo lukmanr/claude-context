@@ -81,7 +81,8 @@ export class SyncManager {
 
                     if (error.message.includes('Failed to query Milvus')) {
                         // Collection maybe deleted manually, delete the snapshot file
-                        await FileSynchronizer.deleteSnapshot(codebasePath);
+                        const contextDataPath = this.snapshotManager.getContextDataPath();
+                        await FileSynchronizer.deleteSnapshot(codebasePath, contextDataPath);
                     }
 
                     // Log additional error details

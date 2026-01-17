@@ -94,6 +94,7 @@ export interface ContextConfig {
     ignorePatterns?: string[];
     customExtensions?: string[]; // New: custom extensions from MCP
     customIgnorePatterns?: string[]; // New: custom ignore patterns from MCP
+    contextDataPath?: string; // Path to store index metadata (default: ~/.context)
 }
 
 export class Context {
@@ -103,8 +104,13 @@ export class Context {
     private supportedExtensions: string[];
     private ignorePatterns: string[];
     private synchronizers = new Map<string, FileSynchronizer>();
+    private contextDataPath: string;
 
     constructor(config: ContextConfig = {}) {
+        // Initialize context data path and set it as the default for FileSynchronizer
+        this.contextDataPath = config.contextDataPath || path.join(require('os').homedir(), '.context');
+        FileSynchronizer.setDefaultContextDataPath(this.contextDataPath);
+
         // Initialize services
         this.embedding = config.embedding || new OpenAIEmbedding({
             apiKey: envManager.get('OPENAI_API_KEY') || 'your-openai-api-key',
@@ -1005,13 +1011,12 @@ export class Context {
     }
 
     /**
-     * Load global ignore file from ~/.context/.contextignore
+     * Load global ignore file from context data path (.contextignore)
      * @returns Array of ignore patterns
      */
     private async loadGlobalIgnoreFile(): Promise<string[]> {
         try {
-            const homeDir = require('os').homedir();
-            const globalIgnorePath = path.join(homeDir, '.context', '.contextignore');
+            const globalIgnorePath = path.join(this.contextDataPath, '.contextignore');
             return await this.loadIgnoreFile(globalIgnorePath, 'global .contextignore');
         } catch (error) {
             // Global ignore file is optional, don't log warnings

@@ -112,14 +112,15 @@ class ContextMcpServer {
             });
         }
 
-        // Initialize Claude Context
+        // Initialize Claude Context with configurable context data path
         this.context = new Context({
             embedding,
-            vectorDatabase
+            vectorDatabase,
+            contextDataPath: config.contextDataPath
         });
 
-        // Initialize managers
-        this.snapshotManager = new SnapshotManager();
+        // Initialize managers with configurable context data path
+        this.snapshotManager = new SnapshotManager(config.contextDataPath);
         this.syncManager = new SyncManager(this.context, this.snapshotManager);
         this.toolHandlers = new ToolHandlers(this.context, this.snapshotManager);
 

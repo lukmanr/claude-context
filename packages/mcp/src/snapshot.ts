@@ -13,14 +13,24 @@ import {
 
 export class SnapshotManager {
     private snapshotFilePath: string;
+    private contextDataPath: string;
     private indexedCodebases: string[] = [];
     private indexingCodebases: Map<string, number> = new Map(); // Map of codebase path to progress percentage
     private codebaseFileCount: Map<string, number> = new Map(); // Map of codebase path to indexed file count
     private codebaseInfoMap: Map<string, CodebaseInfo> = new Map(); // Map of codebase path to complete info
 
-    constructor() {
+    constructor(contextDataPath?: string) {
+        // Initialize context data path (default: ~/.context)
+        this.contextDataPath = contextDataPath || path.join(os.homedir(), '.context');
         // Initialize snapshot file path
-        this.snapshotFilePath = path.join(os.homedir(), '.context', 'mcp-codebase-snapshot.json');
+        this.snapshotFilePath = path.join(this.contextDataPath, 'mcp-codebase-snapshot.json');
+    }
+
+    /**
+     * Get the context data path (for use by other components)
+     */
+    public getContextDataPath(): string {
+        return this.contextDataPath;
     }
 
     /**

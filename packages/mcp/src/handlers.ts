@@ -343,10 +343,13 @@ export class ToolHandlers {
             await this.context.getLoadedIgnorePatterns(absolutePath);
 
             // Initialize file synchronizer with proper ignore patterns (including project-specific patterns)
+            // Uses the context data path from the snapshot manager for consistency
             const { FileSynchronizer } = await import("@zilliz/claude-context-core");
             const ignorePatterns = this.context.getIgnorePatterns() || [];
+            const contextDataPath = this.snapshotManager.getContextDataPath();
             console.log(`[BACKGROUND-INDEX] Using ignore patterns: ${ignorePatterns.join(', ')}`);
-            const synchronizer = new FileSynchronizer(absolutePath, ignorePatterns);
+            console.log(`[BACKGROUND-INDEX] Context data path: ${contextDataPath}`);
+            const synchronizer = new FileSynchronizer(absolutePath, ignorePatterns, contextDataPath);
             await synchronizer.initialize();
 
             // Store synchronizer in the context (let context manage collection names)

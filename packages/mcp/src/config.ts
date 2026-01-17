@@ -29,6 +29,8 @@ export interface ContextMcpConfig {
     postgresSSL?: boolean;
     // ChromaDB configuration
     chromaPath?: string; // Path to store ChromaDB data (default: ~/.velocity/chroma)
+    // Context data path configuration
+    contextDataPath?: string; // Path to store index metadata (default: ~/.context)
 }
 
 // Legacy format (v1) - for backward compatibility
@@ -125,6 +127,7 @@ export function createMcpConfig(): ContextMcpConfig {
     console.log(`[DEBUG]   MILVUS_ADDRESS: ${envManager.get('MILVUS_ADDRESS') || 'NOT SET'}`);
     console.log(`[DEBUG]   POSTGRES_CONNECTION_STRING: ${envManager.get('POSTGRES_CONNECTION_STRING') ? 'SET' : 'NOT SET'}`);
     console.log(`[DEBUG]   CHROMA_PATH: ${envManager.get('CHROMA_PATH') || 'NOT SET'}`);
+    console.log(`[DEBUG]   CONTEXT_DATA_PATH: ${envManager.get('CONTEXT_DATA_PATH') || 'NOT SET'}`);
     console.log(`[DEBUG]   NODE_ENV: ${envManager.get('NODE_ENV') || 'NOT SET'}`);
 
     const config: ContextMcpConfig = {
@@ -155,7 +158,9 @@ export function createMcpConfig(): ContextMcpConfig {
         postgresPassword: envManager.get('POSTGRES_PASSWORD'),
         postgresSSL: envManager.get('POSTGRES_SSL') === 'true',
         // ChromaDB configuration
-        chromaPath: envManager.get('CHROMA_PATH')
+        chromaPath: envManager.get('CHROMA_PATH'),
+        // Context data path configuration
+        contextDataPath: envManager.get('CONTEXT_DATA_PATH')
     };
 
     return config;
@@ -203,6 +208,9 @@ export function logConfigurationSummary(config: ContextMcpConfig): void {
             console.log(`[MCP]   Ollama Model: ${config.embeddingModel}`);
             break;
     }
+
+    // Log context data path
+    console.log(`[MCP]   Context Data Path: ${config.contextDataPath || '~/.context (default)'}`);
 
     console.log(`[MCP] 🔧 Initializing server components...`);
 }
@@ -254,6 +262,9 @@ Environment Variables:
   ChromaDB Configuration:
   CHROMA_PATH             Path to store ChromaDB data (default: ~/.velocity/chroma)
                           Note: ChromaDB server is started automatically by the MCP server
+  
+  Context Data Configuration:
+  CONTEXT_DATA_PATH       Path to store index metadata (snapshots, merkle trees) (default: ~/.context)
 
 Examples:
   # Start MCP server with OpenAI (default) and explicit Milvus address

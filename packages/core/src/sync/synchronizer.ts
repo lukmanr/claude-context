@@ -10,9 +10,28 @@ export class FileSynchronizer {
     private rootDir: string;
     private snapshotPath: string;
     private ignorePatterns: string[];
+    private contextDataPath: string;
 
-    constructor(rootDir: string, ignorePatterns: string[] = []) {
+    // Static default context data path for cases where instance is not available
+    private static defaultContextDataPath: string = path.join(os.homedir(), '.context');
+
+    /**
+     * Set the default context data path for static methods
+     */
+    static setDefaultContextDataPath(contextDataPath: string): void {
+        FileSynchronizer.defaultContextDataPath = contextDataPath;
+    }
+
+    /**
+     * Get the default context data path
+     */
+    static getDefaultContextDataPath(): string {
+        return FileSynchronizer.defaultContextDataPath;
+    }
+
+    constructor(rootDir: string, ignorePatterns: string[] = [], contextDataPath?: string) {
         this.rootDir = rootDir;
+        this.contextDataPath = contextDataPath || FileSynchronizer.defaultContextDataPath;
         this.snapshotPath = this.getSnapshotPath(rootDir);
         this.fileHashes = new Map();
         this.merkleDAG = new MerkleDAG();
@@ -20,8 +39,7 @@ export class FileSynchronizer {
     }
 
     private getSnapshotPath(codebasePath: string): string {
-        const homeDir = os.homedir();
-        const merkleDir = path.join(homeDir, '.context', 'merkle');
+        const merkleDir = path.join(this.contextDataPath, 'merkle');
 
         const normalizedPath = path.resolve(codebasePath);
         const hash = crypto.createHash('md5').update(normalizedPath).digest('hex');
@@ -325,10 +343,12 @@ export class FileSynchronizer {
 
     /**
      * Delete snapshot file for a given codebase path
+     * @param codebasePath - The path to the codebase
+     * @param contextDataPath - Optional custom context data path (uses default if not provided)
      */
-    static async deleteSnapshot(codebasePath: string): Promise<void> {
-        const homeDir = os.homedir();
-        const merkleDir = path.join(homeDir, '.context', 'merkle');
+    static async deleteSnapshot(codebasePath: string, contextDataPath?: string): Promise<void> {
+        const dataPath = contextDataPath || FileSynchronizer.defaultContextDataPath;
+        const merkleDir = path.join(dataPath, 'merkle');
         const normalizedPath = path.resolve(codebasePath);
         const hash = crypto.createHash('md5').update(normalizedPath).digest('hex');
         const snapshotPath = path.join(merkleDir, `${hash}.json`);
