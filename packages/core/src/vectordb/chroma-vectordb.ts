@@ -130,22 +130,80 @@ export class ChromaVectorDatabase implements VectorDatabase {
     }
 
     /**
+     * Find the chromadb CLI script in node_modules
+     * Returns the path to dist/cli.mjs if found, null otherwise
+     */
+    private findChromaCliPath(): string | null {
+        // Log for debugging
+        console.log(`[ChromaDB] Looking for CLI, cwd: ${process.cwd()}`);
+
+        // Try to find chromadb's CLI in various locations
+        // Note: In bundled Electron apps, process.cwd() is set to the resources directory
+        const possiblePaths = [
+            // Electron bundled app: resources/mcp/claude-context/node_modules/chromadb/dist/cli.mjs
+            path.join(process.cwd(), 'mcp', 'claude-context', 'node_modules', 'chromadb', 'dist', 'cli.mjs'),
+            // Development: relative to project root
+            path.join(process.cwd(), 'node_modules', 'chromadb', 'dist', 'cli.mjs'),
+            // Development: mcp/claude-context workspace
+            path.join(process.cwd(), 'mcp', 'claude-context', 'node_modules', 'chromadb', 'dist', 'cli.mjs'),
+        ];
+
+        for (const cliPath of possiblePaths) {
+            console.log(`[ChromaDB] Checking path: ${cliPath}`);
+            if (fs.existsSync(cliPath)) {
+                console.log(`[ChromaDB] Found CLI at: ${cliPath}`);
+                return cliPath;
+            }
+        }
+
+        console.log(`[ChromaDB] CLI not found in any of the expected locations`);
+        return null;
+    }
+
+    /**
      * Start the ChromaDB server process
      * Uses the chromadb npm package's native bindings (Rust-compiled)
      */
     private async startServer(): Promise<void> {
         return new Promise((resolve, reject) => {
-            // Use npx chromadb (native bindings) to run the server
-            const chromaProcess = spawn('npx', [
-                'chromadb', 'run',
-                '--path', this.chromaPath,
-                '--port', this.chromaPort.toString(),
-                '--host', this.chromaHost
-            ], {
-                stdio: ['ignore', 'pipe', 'pipe'],
-                detached: false,
-                env: { ...process.env }
-            });
+            const isWindows = process.platform === 'win32';
+
+            // Try to find chromadb CLI directly (more reliable than npx)
+            const chromaCliPath = this.findChromaCliPath();
+
+            let chromaProcess: ChildProcess;
+
+            if (chromaCliPath) {
+                // Use Node.js directly to run the CLI (works in Electron without npx)
+                // process.execPath is the path to Node.js (or Electron acting as Node)
+                console.log(`🚀 Starting ChromaDB server using CLI at: ${chromaCliPath}`);
+                chromaProcess = spawn(process.execPath, [
+                    chromaCliPath,
+                    'run',
+                    '--path', this.chromaPath,
+                    '--port', this.chromaPort.toString(),
+                    '--host', this.chromaHost
+                ], {
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                    detached: false,
+                    env: { ...process.env }
+                });
+            } else {
+                // Fallback to npx (requires npm to be installed)
+                // On Windows, we need shell: true for npx to be found correctly
+                console.log(`🚀 Starting ChromaDB server using npx (CLI not found directly)`);
+                chromaProcess = spawn('npx', [
+                    'chromadb', 'run',
+                    '--path', this.chromaPath,
+                    '--port', this.chromaPort.toString(),
+                    '--host', this.chromaHost
+                ], {
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                    detached: false,
+                    shell: isWindows, // Required on Windows to find npx.cmd
+                    env: { ...process.env }
+                });
+            }
 
             ChromaVectorDatabase.serverProcess = chromaProcess;
             ChromaVectorDatabase.serverStarted = true;
