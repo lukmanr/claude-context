@@ -6,6 +6,8 @@ export class SyncManager {
     private context: Context;
     private snapshotManager: SnapshotManager;
     private isSyncing: boolean = false;
+    private syncIntervalId: NodeJS.Timeout | null = null;
+    private initialSyncTimeoutId: NodeJS.Timeout | null = null;
 
     constructor(context: Context, snapshotManager: SnapshotManager) {
         this.context = context;
@@ -117,7 +119,7 @@ export class SyncManager {
 
         // Execute initial sync immediately after a short delay to let server initialize
         console.log('[SYNC-DEBUG] Scheduling initial sync in 5 seconds...');
-        setTimeout(async () => {
+        this.initialSyncTimeoutId = setTimeout(async () => {
             console.log('[SYNC-DEBUG] Executing initial sync after server startup');
             try {
                 await this.handleSyncIndex();
@@ -134,11 +136,33 @@ export class SyncManager {
 
         // Periodically check for file changes and update the index
         console.log('[SYNC-DEBUG] Setting up periodic sync every 5 minutes (300000ms)');
-        const syncInterval = setInterval(() => {
+        this.syncIntervalId = setInterval(() => {
             console.log('[SYNC-DEBUG] Executing scheduled periodic sync');
             this.handleSyncIndex();
         }, 5 * 60 * 1000); // every 5 minutes
 
-        console.log('[SYNC-DEBUG] Background sync setup complete. Interval ID:', syncInterval);
+        console.log('[SYNC-DEBUG] Background sync setup complete. Interval ID:', this.syncIntervalId);
+    }
+
+    /**
+     * Stop background sync and cleanup timers
+     * This should be called during graceful shutdown
+     */
+    public stopBackgroundSync(): void {
+        console.log('[SYNC-DEBUG] stopBackgroundSync() called');
+        
+        if (this.initialSyncTimeoutId) {
+            clearTimeout(this.initialSyncTimeoutId);
+            this.initialSyncTimeoutId = null;
+            console.log('[SYNC-DEBUG] Initial sync timeout cleared');
+        }
+        
+        if (this.syncIntervalId) {
+            clearInterval(this.syncIntervalId);
+            this.syncIntervalId = null;
+            console.log('[SYNC-DEBUG] Periodic sync interval cleared');
+        }
+        
+        console.log('[SYNC-DEBUG] Background sync stopped');
     }
 } 

@@ -79,6 +79,9 @@ export class ChromaVectorDatabase implements VectorDatabase {
     /**
      * Ensure ChromaDB server is running, starting it if necessary
      * Uses a lock to prevent multiple concurrent server start attempts
+     * 
+     * If startup fails due to port conflict but a server is already running,
+     * this method will succeed by connecting to the existing server.
      */
     private async ensureServerRunning(): Promise<void> {
         // If another call is already starting the server, wait for it
@@ -90,7 +93,10 @@ export class ChromaVectorDatabase implements VectorDatabase {
 
         // Check if server is already running (either started by us or externally)
         if (await this.isServerRunning()) {
-            console.log(`✅ ChromaDB server already running at ${this.chromaHost}:${this.chromaPort}`);
+            console.log(`✅ ChromaDB server already running at ${this.chromaHost}:${this.chromaPort} (external or previous session)`);
+            // Mark as externally managed so we don't try to stop it on shutdown
+            ChromaVectorDatabase.serverStarted = true;
+            ChromaVectorDatabase.serverProcess = null; // null process means externally managed
             return;
         }
 
@@ -107,6 +113,21 @@ export class ChromaVectorDatabase implements VectorDatabase {
         
         try {
             await ChromaVectorDatabase.serverStartPromise;
+        } catch (error) {
+            // Server startup failed - check if another server is already running
+            // This can happen if the initial isServerRunning() check raced with another process
+            console.log(`⚠️  ChromaDB server startup failed, checking if external server is available...`);
+            
+            if (await this.isServerRunning()) {
+                console.log(`✅ External ChromaDB server detected at ${this.chromaHost}:${this.chromaPort} - will use existing server`);
+                // Mark as externally managed
+                ChromaVectorDatabase.serverStarted = true;
+                ChromaVectorDatabase.serverProcess = null;
+                return; // Success - we can use the existing server
+            }
+            
+            // No external server available, re-throw the error
+            throw error;
         } finally {
             // Clear the promise after completion (success or failure)
             ChromaVectorDatabase.serverStartPromise = null;
@@ -298,18 +319,31 @@ export class ChromaVectorDatabase implements VectorDatabase {
         throw new Error(`ChromaDB server failed to start within ${timeoutMs}ms`);
     }
 
+    // Track if cleanup handlers have been registered
+    private static cleanupHandlersRegistered: boolean = false;
+
     /**
      * Register cleanup handlers to stop the server on process exit
+     * Only registers handlers if we started the server ourselves (serverProcess is not null)
      */
     private registerCleanupHandlers(): void {
+        // Only register handlers once, and only if we own the server process
+        if (ChromaVectorDatabase.cleanupHandlersRegistered) {
+            return;
+        }
+        
+        // Don't register cleanup if using externally managed server
+        if (!ChromaVectorDatabase.serverProcess) {
+            console.log('ℹ️  Skipping cleanup handler registration for externally managed server');
+            return;
+        }
+
+        ChromaVectorDatabase.cleanupHandlersRegistered = true;
+        console.log('📝 Registering ChromaDB cleanup handlers');
+
         const cleanup = () => {
             this.stopServer();
         };
-
-        // Only register once
-        if (!ChromaVectorDatabase.serverStarted) {
-            return;
-        }
 
         process.once('exit', cleanup);
         process.once('SIGINT', () => {
@@ -329,10 +363,12 @@ export class ChromaVectorDatabase implements VectorDatabase {
 
     /**
      * Stop the ChromaDB server process
+     * Only stops the server if we started it (serverProcess is not null)
+     * If serverProcess is null but serverStarted is true, the server is externally managed
      */
     private stopServer(): void {
         if (ChromaVectorDatabase.serverProcess) {
-            console.log('🛑 Stopping ChromaDB server...');
+            console.log('🛑 Stopping ChromaDB server (started by this process)...');
             try {
                 // Try graceful shutdown first
                 ChromaVectorDatabase.serverProcess.kill('SIGTERM');
@@ -347,6 +383,10 @@ export class ChromaVectorDatabase implements VectorDatabase {
                 console.error('Error stopping ChromaDB server:', error);
             }
             ChromaVectorDatabase.serverProcess = null;
+            ChromaVectorDatabase.serverStarted = false;
+        } else if (ChromaVectorDatabase.serverStarted) {
+            // Server is externally managed - don't stop it, just clear our state
+            console.log('ℹ️  ChromaDB server is externally managed - not stopping');
             ChromaVectorDatabase.serverStarted = false;
         }
     }

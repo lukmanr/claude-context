@@ -64,8 +64,14 @@ class ContextMcpServer {
     private snapshotManager: SnapshotManager;
     private syncManager: SyncManager;
     private toolHandlers: ToolHandlers;
+    
+    // Static reference to allow cleanup from signal handlers
+    private static instance: ContextMcpServer | null = null;
 
     constructor(config: ContextMcpConfig) {
+        // Store instance for cleanup from signal handlers
+        ContextMcpServer.instance = this;
+        
         // Initialize MCP server
         this.server = new Server(
             {
@@ -309,6 +315,42 @@ This tool is versatile and can be used before completing various tasks to retrie
         this.syncManager.startBackgroundSync();
         console.log('[SYNC-DEBUG] MCP server initialization complete');
     }
+    
+    /**
+     * Gracefully shutdown the MCP server and cleanup resources
+     * This ensures the ChromaDB server process is properly terminated
+     */
+    async shutdown(): Promise<void> {
+        console.log('[SHUTDOWN] Starting graceful shutdown...');
+        
+        try {
+            // Stop background sync
+            this.syncManager.stopBackgroundSync?.();
+            console.log('[SHUTDOWN] Background sync stopped');
+        } catch (error) {
+            console.error('[SHUTDOWN] Error stopping background sync:', error);
+        }
+        
+        try {
+            // Close the context which will close the vector database (and ChromaDB server)
+            await this.context.close();
+            console.log('[SHUTDOWN] Context and vector database closed');
+        } catch (error) {
+            console.error('[SHUTDOWN] Error closing context:', error);
+        }
+        
+        console.log('[SHUTDOWN] Graceful shutdown complete');
+    }
+    
+    /**
+     * Static method to shutdown the server instance from signal handlers
+     */
+    static async shutdownInstance(): Promise<void> {
+        if (ContextMcpServer.instance) {
+            await ContextMcpServer.instance.shutdown();
+            ContextMcpServer.instance = null;
+        }
+    }
 }
 
 // Main execution
@@ -331,13 +373,23 @@ async function main() {
 }
 
 // Handle graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
     console.error("Received SIGINT, shutting down gracefully...");
+    try {
+        await ContextMcpServer.shutdownInstance();
+    } catch (error) {
+        console.error("Error during shutdown:", error);
+    }
     process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
     console.error("Received SIGTERM, shutting down gracefully...");
+    try {
+        await ContextMcpServer.shutdownInstance();
+    } catch (error) {
+        console.error("Error during shutdown:", error);
+    }
     process.exit(0);
 });
 

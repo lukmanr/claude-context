@@ -1245,4 +1245,28 @@ export class Context {
             };
         }
     }
+
+    /**
+     * Close the context and cleanup resources
+     * This should be called when shutting down to properly cleanup the vector database
+     * (e.g., to stop the ChromaDB server if it was started by this instance)
+     */
+    async close(): Promise<void> {
+        console.log('[Context] 🔌 Closing context and cleaning up resources...');
+        
+        try {
+            // Close the vector database (this will stop ChromaDB server if applicable)
+            if (this.vectorDatabase && typeof (this.vectorDatabase as any).close === 'function') {
+                await (this.vectorDatabase as any).close();
+                console.log('[Context] ✅ Vector database closed');
+            }
+        } catch (error) {
+            console.error('[Context] ❌ Error closing vector database:', error);
+        }
+        
+        // Clear synchronizers
+        this.synchronizers.clear();
+        
+        console.log('[Context] ✅ Context cleanup complete');
+    }
 }
