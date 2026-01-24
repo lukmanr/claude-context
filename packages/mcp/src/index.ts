@@ -128,7 +128,7 @@ class ContextMcpServer {
         // Initialize managers with configurable context data path
         this.snapshotManager = new SnapshotManager(config.contextDataPath);
         this.syncManager = new SyncManager(this.context, this.snapshotManager);
-        this.toolHandlers = new ToolHandlers(this.context, this.snapshotManager);
+        this.toolHandlers = new ToolHandlers(this.context, this.snapshotManager, config.vectorDatabaseProvider);
 
         // Load existing codebase snapshot on startup
         this.snapshotManager.loadCodebaseSnapshot();

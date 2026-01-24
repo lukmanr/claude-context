@@ -10,12 +10,15 @@ export class ToolHandlers {
     private snapshotManager: SnapshotManager;
     private indexingStats: { indexedFiles: number; totalChunks: number } | null = null;
     private currentWorkspace: string;
+    private vectorDatabaseProvider: 'milvus' | 'postgres' | 'chroma';
 
-    constructor(context: Context, snapshotManager: SnapshotManager) {
+    constructor(context: Context, snapshotManager: SnapshotManager, vectorDatabaseProvider: 'milvus' | 'postgres' | 'chroma' = 'milvus') {
         this.context = context;
         this.snapshotManager = snapshotManager;
+        this.vectorDatabaseProvider = vectorDatabaseProvider;
         this.currentWorkspace = process.cwd();
         console.log(`[WORKSPACE] Current workspace: ${this.currentWorkspace}`);
+        console.log(`[WORKSPACE] Vector database provider: ${this.vectorDatabaseProvider}`);
     }
 
     /**
@@ -27,8 +30,18 @@ export class ToolHandlers {
      * Logic: Compare mcp-codebase-snapshot.json with zilliz cloud collections
      * - If local snapshot has extra directories (not in cloud), remove them
      * - If local snapshot is missing directories (exist in cloud), ignore them
+     * 
+     * NOTE: This is only applicable for cloud-based vector databases (Milvus/Zilliz Cloud).
+     * For local databases like ChromaDB, the local snapshot is the source of truth.
      */
     private async syncIndexedCodebasesFromCloud(): Promise<void> {
+        // Skip cloud sync for local databases like ChromaDB
+        // The local snapshot is the source of truth for local databases
+        if (this.vectorDatabaseProvider === 'chroma') {
+            console.log(`[SYNC-CLOUD] ⏭️  Skipping cloud sync for ChromaDB (local database) - local snapshot is source of truth`);
+            return;
+        }
+
         try {
             console.log(`[SYNC-CLOUD] 🔄 Syncing indexed codebases from Zilliz Cloud...`);
 
