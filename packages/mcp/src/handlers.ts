@@ -31,14 +31,20 @@ export class ToolHandlers {
      * - If local snapshot has extra directories (not in cloud), remove them
      * - If local snapshot is missing directories (exist in cloud), ignore them
      * 
-     * NOTE: This is only applicable for cloud-based vector databases (Milvus/Zilliz Cloud).
-     * For local databases like ChromaDB, the local snapshot is the source of truth.
+     * NOTE: Cloud sync is DISABLED by default. It is only enabled for known cloud providers
+     * (milvus). For all other databases (chroma, postgres, etc.), the local snapshot is
+     * the source of truth. This prevents accidental data loss from cloud sync operations.
+     * 
+     * Architectural Design: Velocity provides a local vector DB option (ChromaDB) specifically
+     * to avoid storing semantic index data in the cloud. Cloud sync must never interfere with
+     * local-only indexing.
      */
     private async syncIndexedCodebasesFromCloud(): Promise<void> {
-        // Skip cloud sync for local databases like ChromaDB
-        // The local snapshot is the source of truth for local databases
-        if (this.vectorDatabaseProvider === 'chroma') {
-            console.log(`[SYNC-CLOUD] ⏭️  Skipping cloud sync for ChromaDB (local database) - local snapshot is source of truth`);
+        // Cloud sync is ONLY enabled for milvus (Zilliz Cloud)
+        // All other providers (chroma, postgres) use local snapshot as source of truth
+        // This is an explicit architectural design to support local-only vector storage
+        if (this.vectorDatabaseProvider !== 'milvus') {
+            console.log(`[SYNC-CLOUD] ⏭️  Cloud sync disabled for ${this.vectorDatabaseProvider} - local snapshot is source of truth`);
             return;
         }
 
