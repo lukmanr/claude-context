@@ -83,6 +83,22 @@ importers:
         specifier: ^5.0.0
         version: 5.8.3
 
+  examples/chroma-usage:
+    dependencies:
+      '@zilliz/claude-context-core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      chromadb:
+        specifier: 3.2.2
+        version: 3.2.2
+    devDependencies:
+      tsx:
+        specifier: ^4.0.0
+        version: 4.19.4
+      typescript:
+        specifier: ^5.0.0
+        version: 5.8.3
+
   packages/chrome-extension:
     dependencies:
       '@zilliz/claude-context-core':
@@ -6627,7 +6643,7 @@ snapshots:
 
   chromadb@3.2.2:
     dependencies:
-      semver: 7.7.2
+      semver: 7.7.3
     optionalDependencies:
       chromadb-js-bindings-darwin-arm64: 1.2.1
       chromadb-js-bindings-darwin-x64: 1.2.1

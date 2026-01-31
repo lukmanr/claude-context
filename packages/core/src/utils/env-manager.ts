@@ -6,8 +6,28 @@ export class EnvManager {
     private envFilePath: string;
 
     constructor() {
-        const homeDir = os.homedir();
-        this.envFilePath = path.join(homeDir, '.context', '.env');
+        // Look for .env.secrets in the Skillshop project root
+        // Start from current working directory and traverse up to find .env.secrets
+        let currentDir = process.cwd();
+        let envSecretsPath = '';
+        
+        // Traverse up the directory tree to find .env.secrets
+        while (currentDir !== path.dirname(currentDir)) {
+            const potentialEnvPath = path.join(currentDir, '.env.secrets');
+            if (fs.existsSync(potentialEnvPath)) {
+                envSecretsPath = potentialEnvPath;
+                break;
+            }
+            currentDir = path.dirname(currentDir);
+        }
+        
+        // Fallback to the original behavior if .env.secrets not found
+        if (envSecretsPath) {
+            this.envFilePath = envSecretsPath;
+        } else {
+            const homeDir = os.homedir();
+            this.envFilePath = path.join(homeDir, '.context', '.env');
+        }
     }
 
     /**

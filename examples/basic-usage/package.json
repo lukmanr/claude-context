@@ -5,7 +5,7 @@
     "main": "index.ts",
     "scripts": {
         "start": "tsx index.ts",
-        "build": "tsc index.ts --outDir dist --target es2020 --module commonjs --moduleResolution node --esModuleInterop true",
+        "build": "tsc index.ts --outDir dist --target es2020 --module commonjs --moduleResolution node --esModuleInterop true --skipLibCheck",
         "dev": "tsx --watch index.ts"
     },
     "dependencies": {
