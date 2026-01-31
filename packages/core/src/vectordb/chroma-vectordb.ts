@@ -715,24 +715,23 @@ export class ChromaVectorDatabase implements VectorDatabase {
                 whereFilter = this.parseFilterExpression(options.filterExpr);
             }
 
-            // ChromaDB doesn't have native hybrid search with BM25, but we can:
-            // 1. Use vector search for semantic matching
-            // 2. If text query is provided, filter results by document content
+            // ChromaDB doesn't have native hybrid search with BM25
+            // Use pure vector similarity search for semantic matching
+            // NOTE: We do NOT use whereDocument text filter because $contains does exact
+            // substring matching which is too restrictive for natural language queries.
+            // Vector similarity provides proper semantic matching.
             const queryVector = denseRequest.data as number[];
             
-            let whereDocumentFilter: string | undefined;
             if (sparseRequest && typeof sparseRequest.data === 'string') {
-                // Use ChromaDB's document filter for text-based filtering
-                whereDocumentFilter = sparseRequest.data;
-                console.log(`[ChromaDB] 🔍 Hybrid search: vector search with text filter: "${sparseRequest.data.substring(0, 50)}..."`);
+                console.log(`[ChromaDB] 🔍 Semantic search for: "${sparseRequest.data.substring(0, 50)}${sparseRequest.data.length > 50 ? '...' : ''}"`);
             }
 
             const results = await collection.query({
                 queryEmbeddings: [queryVector],
                 nResults: limit,
                 include: [IncludeEnum.documents, IncludeEnum.metadatas, IncludeEnum.distances],
-                where: whereFilter,
-                whereDocument: whereDocumentFilter ? { "$contains": whereDocumentFilter } : undefined
+                where: whereFilter
+                // NOTE: Not using whereDocument as $contains is too restrictive for semantic search
             });
 
             if (!results.ids || results.ids.length === 0 || !results.ids[0]) {
