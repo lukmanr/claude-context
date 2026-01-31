@@ -6,7 +6,7 @@
     "scripts": {
         "dev": "tsx watch index.ts",
         "start": "tsx index.ts",
-        "build": "tsc index.ts --outDir dist --target es2020 --module commonjs --moduleResolution node --esModuleInterop true --skipLibCheck"
+        "build": "tsc"
     },
     "dependencies": {
         "@zilliz/claude-context-core": "workspace:*",
