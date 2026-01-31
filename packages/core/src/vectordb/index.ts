@@ -25,4 +25,13 @@ export {
     CreateFreeClusterResponse,
     CreateFreeClusterWithDetailsResponse,
     DescribeClusterResponse
-} from './zilliz-utils'; 
+} from './zilliz-utils';
+
+// BM25 index manager for hybrid search
+export {
+    BM25IndexManager,
+    BM25Config,
+    BM25Document,
+    BM25SearchResult,
+    createBM25IndexManager
+} from './bm25-index-manager'; 

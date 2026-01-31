@@ -12,6 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
+import { BM25IndexManager, BM25SearchResult, BM25Config } from './bm25-index-manager';
 
 export interface ChromaConfig {
     /** Path to store ChromaDB data (default: ~/.velocity/chroma) */
@@ -30,6 +31,10 @@ export interface ChromaConfig {
     hnswBatchSize?: number;
     /** HNSW num_threads for indexing, 0 = auto (default: 0) */
     hnswNumThreads?: number;
+    /** BM25 configuration for hybrid search */
+    bm25Config?: BM25Config;
+    /** Enable BM25 hybrid search (default: true when HYBRID_MODE is enabled) */
+    enableBM25?: boolean;
 }
 
 /**
@@ -51,6 +56,12 @@ export class ChromaVectorDatabase implements VectorDatabase {
     private static serverProcess: ChildProcess | null = null;
     // Lock to prevent multiple concurrent server start attempts
     private static serverStartPromise: Promise<void> | null = null;
+    
+    // BM25 index manager for hybrid search
+    private bm25IndexManager: BM25IndexManager;
+    private enableBM25: boolean;
+    // Track which collections are hybrid (have BM25 indexes)
+    private hybridCollections: Set<string> = new Set();
 
     constructor(config: ChromaConfig) {
         this.config = config;
@@ -58,6 +69,11 @@ export class ChromaVectorDatabase implements VectorDatabase {
         this.chromaPath = config.path || path.join(os.homedir(), '.velocity', 'chroma');
         this.chromaPort = config.port || 8000;
         this.chromaHost = config.host || 'localhost';
+        
+        // Initialize BM25 index manager
+        this.enableBM25 = config.enableBM25 !== false; // Default to true
+        this.bm25IndexManager = new BM25IndexManager(config.bm25Config);
+        
         this.initializationPromise = this.initialize();
     }
 
@@ -502,11 +518,24 @@ export class ChromaVectorDatabase implements VectorDatabase {
     }
 
     async createHybridCollection(collectionName: string, dimension: number, description?: string): Promise<void> {
-        // ChromaDB doesn't have a separate hybrid collection concept
-        // It stores the full text content alongside embeddings by default
-        // We can use metadata for full-text search capabilities
-        console.log(`[ChromaDB] 📝 Creating hybrid collection '${collectionName}' (same as regular collection with metadata)`);
+        // Create the ChromaDB collection
+        console.log(`[ChromaDB] 📝 Creating hybrid collection '${collectionName}' with BM25 support`);
         await this.createCollection(collectionName, dimension, description);
+        
+        const sanitizedName = this.sanitizeCollectionName(collectionName);
+        
+        // Initialize or load the BM25 index for this collection
+        if (this.enableBM25) {
+            // Try to load existing BM25 index
+            const loaded = await this.bm25IndexManager.loadIndex(sanitizedName);
+            if (!loaded) {
+                console.log(`[ChromaDB] 📝 No existing BM25 index found for '${collectionName}', will create on first insert`);
+            }
+            this.hybridCollections.add(sanitizedName);
+            console.log(`[ChromaDB] ✅ Hybrid collection '${collectionName}' ready with BM25 indexing enabled`);
+        } else {
+            console.log(`[ChromaDB] ⚠️ BM25 disabled - hybrid collection will use vector-only search`);
+        }
     }
 
     async dropCollection(collectionName: string): Promise<void> {
@@ -520,10 +549,17 @@ export class ChromaVectorDatabase implements VectorDatabase {
             // Collection might not exist
             if (error.message?.includes('does not exist')) {
                 console.log(`⚠️  Collection '${sanitizedName}' does not exist, nothing to drop`);
-                return;
+            } else {
+                console.error(`❌ Failed to drop collection '${collectionName}':`, error);
+                throw error;
             }
-            console.error(`❌ Failed to drop collection '${collectionName}':`, error);
-            throw error;
+        }
+        
+        // Also drop the BM25 index if it exists
+        if (this.hybridCollections.has(sanitizedName)) {
+            await this.bm25IndexManager.dropIndex(sanitizedName);
+            this.hybridCollections.delete(sanitizedName);
+            console.log(`✅ BM25 index for '${sanitizedName}' dropped successfully`);
         }
     }
 
@@ -617,9 +653,34 @@ export class ChromaVectorDatabase implements VectorDatabase {
     }
 
     async insertHybrid(collectionName: string, documents: VectorDocument[]): Promise<void> {
-        // ChromaDB stores documents alongside embeddings by default
-        // No special handling needed for hybrid insertion
+        const sanitizedName = this.sanitizeCollectionName(collectionName);
+        
+        // Insert into ChromaDB (vector store)
         await this.insert(collectionName, documents);
+        
+        // Insert into BM25 index for hybrid search
+        if (this.enableBM25 && documents.length > 0) {
+            console.log(`[ChromaDB] 📝 Adding ${documents.length} documents to BM25 index for '${collectionName}'`);
+            
+            // Prepare documents for BM25 indexing
+            const bm25Docs = documents.map(doc => ({
+                id: doc.id,
+                content: doc.content,
+            }));
+            
+            await this.bm25IndexManager.addDocuments(sanitizedName, bm25Docs);
+            
+            // Mark as hybrid collection
+            this.hybridCollections.add(sanitizedName);
+            
+            // Save BM25 index to disk (persist after each batch for durability)
+            await this.bm25IndexManager.saveIndex(sanitizedName);
+            
+            const stats = this.bm25IndexManager.getIndexStats(sanitizedName);
+            if (stats) {
+                console.log(`[ChromaDB] ✅ BM25 index updated: ${stats.documentCount} docs, ${stats.termCount} terms`);
+            }
+        }
     }
 
     async search(collectionName: string, queryVector: number[], options?: SearchOptions): Promise<VectorSearchResult[]> {
@@ -694,6 +755,7 @@ export class ChromaVectorDatabase implements VectorDatabase {
         await this.ensureInitialized();
         const sanitizedName = this.sanitizeCollectionName(collectionName);
         const limit = options?.limit || 10;
+        const rrfK = options?.rerank?.params?.k || 60; // RRF k parameter
 
         console.log(`[ChromaDB] 🔍 Performing hybrid search on collection '${sanitizedName}' with ${searchRequests.length} search requests`);
 
@@ -715,65 +777,234 @@ export class ChromaVectorDatabase implements VectorDatabase {
                 whereFilter = this.parseFilterExpression(options.filterExpr);
             }
 
-            // ChromaDB doesn't have native hybrid search with BM25
-            // Use pure vector similarity search for semantic matching
-            // NOTE: We do NOT use whereDocument text filter because $contains does exact
-            // substring matching which is too restrictive for natural language queries.
-            // Vector similarity provides proper semantic matching.
             const queryVector = denseRequest.data as number[];
+            const queryText = sparseRequest?.data as string || '';
             
-            if (sparseRequest && typeof sparseRequest.data === 'string') {
-                console.log(`[ChromaDB] 🔍 Semantic search for: "${sparseRequest.data.substring(0, 50)}${sparseRequest.data.length > 50 ? '...' : ''}"`);
-            }
+            // Check if BM25 hybrid search is enabled and available for this collection
+            const useBM25 = this.enableBM25 && 
+                this.hybridCollections.has(sanitizedName) && 
+                queryText.length > 0;
 
-            const results = await collection.query({
-                queryEmbeddings: [queryVector],
-                nResults: limit,
-                include: [IncludeEnum.documents, IncludeEnum.metadatas, IncludeEnum.distances],
-                where: whereFilter
-                // NOTE: Not using whereDocument as $contains is too restrictive for semantic search
-            });
-
-            if (!results.ids || results.ids.length === 0 || !results.ids[0]) {
-                console.log(`[ChromaDB] ⚠️  No results returned from hybrid search`);
-                return [];
-            }
-
-            console.log(`[ChromaDB] ✅ Found ${results.ids[0].length} results from hybrid search`);
-
-            const hybridResults: HybridSearchResult[] = [];
-            const ids = results.ids[0];
-            const distances = results.distances?.[0] || [];
-            const documents_text = results.documents?.[0] || [];
-            const metadatas = results.metadatas?.[0] || [];
-
-            for (let i = 0; i < ids.length; i++) {
-                // ChromaDB with cosine distance returns distance = 1 - cosine_similarity
-                // So similarity = 1 - distance
-                const distance = distances[i] || 0;
-                const score = Math.max(0, Math.min(1, 1 - distance));
-                const metadata = metadatas[i] || {};
-
-                hybridResults.push({
-                    document: {
-                        id: ids[i],
-                        vector: queryVector,
-                        content: documents_text[i] || '',
-                        relativePath: (metadata.relativePath as string) || '',
-                        startLine: (metadata.startLine as number) || 0,
-                        endLine: (metadata.endLine as number) || 0,
-                        fileExtension: (metadata.fileExtension as string) || '',
-                        metadata: metadata
-                    },
-                    score
+            if (useBM25) {
+                console.log(`[ChromaDB] 🔍 TRUE HYBRID SEARCH (vector + BM25) for: "${queryText.substring(0, 50)}${queryText.length > 50 ? '...' : ''}"`);
+                
+                // Ensure BM25 index is loaded
+                if (!this.bm25IndexManager.hasIndex(sanitizedName)) {
+                    await this.bm25IndexManager.loadIndex(sanitizedName);
+                }
+                
+                // 1. Vector search via ChromaDB
+                const vectorResults = await collection.query({
+                    queryEmbeddings: [queryVector],
+                    nResults: Math.max(limit * 2, 20), // Get more results for better fusion
+                    include: [IncludeEnum.documents, IncludeEnum.metadatas, IncludeEnum.distances],
+                    where: whereFilter
                 });
-            }
 
-            return hybridResults;
+                // 2. BM25 search
+                const bm25Results = await this.bm25IndexManager.search(
+                    sanitizedName,
+                    queryText,
+                    Math.max(limit * 2, 20)
+                );
+
+                // 3. Merge results using RRF (Reciprocal Rank Fusion)
+                return this.mergeWithRRF(
+                    vectorResults,
+                    bm25Results,
+                    queryVector,
+                    rrfK,
+                    limit
+                );
+            } else {
+                // Fallback to vector-only search
+                if (queryText.length > 0) {
+                    console.log(`[ChromaDB] 🔍 VECTOR-ONLY search (BM25 ${this.enableBM25 ? 'not available for this collection' : 'disabled'})`);
+                }
+
+                const results = await collection.query({
+                    queryEmbeddings: [queryVector],
+                    nResults: limit,
+                    include: [IncludeEnum.documents, IncludeEnum.metadatas, IncludeEnum.distances],
+                    where: whereFilter
+                });
+
+                if (!results.ids || results.ids.length === 0 || !results.ids[0]) {
+                    console.log(`[ChromaDB] ⚠️  No results returned from search`);
+                    return [];
+                }
+
+                console.log(`[ChromaDB] ✅ Found ${results.ids[0].length} results from vector search`);
+
+                const hybridResults: HybridSearchResult[] = [];
+                const ids = results.ids[0];
+                const distances = results.distances?.[0] || [];
+                const documents_text = results.documents?.[0] || [];
+                const metadatas = results.metadatas?.[0] || [];
+
+                for (let i = 0; i < ids.length; i++) {
+                    // ChromaDB with cosine distance returns distance = 1 - cosine_similarity
+                    const distance = distances[i] || 0;
+                    const score = Math.max(0, Math.min(1, 1 - distance));
+                    const metadata = metadatas[i] || {};
+
+                    hybridResults.push({
+                        document: {
+                            id: ids[i],
+                            vector: queryVector,
+                            content: documents_text[i] || '',
+                            relativePath: (metadata.relativePath as string) || '',
+                            startLine: (metadata.startLine as number) || 0,
+                            endLine: (metadata.endLine as number) || 0,
+                            fileExtension: (metadata.fileExtension as string) || '',
+                            metadata: metadata
+                        },
+                        score
+                    });
+                }
+
+                return hybridResults;
+            }
         } catch (error) {
             console.error(`❌ Failed to perform hybrid search on collection '${collectionName}':`, error);
             throw error;
         }
+    }
+
+    /**
+     * Merge vector search and BM25 search results using Reciprocal Rank Fusion (RRF)
+     * 
+     * RRF Score = sum(1 / (k + rank)) for each ranking where the document appears
+     * This method effectively combines semantic (vector) and lexical (BM25) signals.
+     */
+    private async mergeWithRRF(
+        vectorResults: {
+            ids: string[][] | null;
+            distances?: (number | null)[][] | null;
+            documents?: (string | null)[][] | null;
+            metadatas?: (Record<string, unknown> | null)[][] | null;
+        },
+        bm25Results: BM25SearchResult[],
+        queryVector: number[],
+        k: number,
+        limit: number
+    ): Promise<HybridSearchResult[]> {
+        // Build a map of document scores and metadata
+        const documentScores = new Map<string, {
+            vectorRank: number | null;
+            bm25Rank: number | null;
+            vectorScore: number;
+            bm25Score: number;
+            content: string;
+            metadata: Record<string, unknown>;
+        }>();
+
+        // Process vector results
+        const vectorIds = vectorResults.ids?.[0] || [];
+        const vectorDistances = vectorResults.distances?.[0] || [];
+        const vectorDocuments = vectorResults.documents?.[0] || [];
+        const vectorMetadatas = vectorResults.metadatas?.[0] || [];
+
+        for (let i = 0; i < vectorIds.length; i++) {
+            const id = vectorIds[i];
+            const distance = vectorDistances[i] || 0;
+            const vectorScore = Math.max(0, Math.min(1, 1 - distance));
+            
+            documentScores.set(id, {
+                vectorRank: i + 1,
+                bm25Rank: null,
+                vectorScore,
+                bm25Score: 0,
+                content: vectorDocuments[i] || '',
+                metadata: (vectorMetadatas[i] as Record<string, unknown>) || {},
+            });
+        }
+
+        // Process BM25 results
+        for (let i = 0; i < bm25Results.length; i++) {
+            const result = bm25Results[i];
+            const existing = documentScores.get(result.id);
+            
+            if (existing) {
+                existing.bm25Rank = i + 1;
+                existing.bm25Score = result.score;
+            } else {
+                // Document found only by BM25 - we need to look it up
+                // For now, we skip these since we don't have their content/metadata
+                // In a production system, you'd fetch the document from ChromaDB
+                console.log(`[ChromaDB] 🔍 BM25 found document not in vector results: ${result.id}`);
+            }
+        }
+
+        // Calculate RRF scores
+        const rrfResults: Array<{
+            id: string;
+            rrfScore: number;
+            vectorScore: number;
+            bm25Score: number;
+            content: string;
+            metadata: Record<string, unknown>;
+        }> = [];
+
+        for (const [id, data] of documentScores) {
+            let rrfScore = 0;
+            
+            // Add vector rank contribution
+            if (data.vectorRank !== null) {
+                rrfScore += 1 / (k + data.vectorRank);
+            }
+            
+            // Add BM25 rank contribution
+            if (data.bm25Rank !== null) {
+                rrfScore += 1 / (k + data.bm25Rank);
+            }
+            
+            rrfResults.push({
+                id,
+                rrfScore,
+                vectorScore: data.vectorScore,
+                bm25Score: data.bm25Score,
+                content: data.content,
+                metadata: data.metadata,
+            });
+        }
+
+        // Sort by RRF score descending
+        rrfResults.sort((a, b) => b.rrfScore - a.rrfScore);
+
+        // Take top results
+        const topResults = rrfResults.slice(0, limit);
+
+        // Log fusion statistics
+        const bothSignals = topResults.filter(r => 
+            documentScores.get(r.id)?.vectorRank !== null && 
+            documentScores.get(r.id)?.bm25Rank !== null
+        ).length;
+        const vectorOnly = topResults.filter(r => 
+            documentScores.get(r.id)?.vectorRank !== null && 
+            documentScores.get(r.id)?.bm25Rank === null
+        ).length;
+        const bm25Only = topResults.filter(r => 
+            documentScores.get(r.id)?.vectorRank === null && 
+            documentScores.get(r.id)?.bm25Rank !== null
+        ).length;
+
+        console.log(`[ChromaDB] ✅ RRF merged ${topResults.length} results (both: ${bothSignals}, vector-only: ${vectorOnly}, BM25-only: ${bm25Only})`);
+
+        // Convert to HybridSearchResult format
+        return topResults.map(result => ({
+            document: {
+                id: result.id,
+                vector: queryVector,
+                content: result.content,
+                relativePath: (result.metadata.relativePath as string) || '',
+                startLine: (result.metadata.startLine as number) || 0,
+                endLine: (result.metadata.endLine as number) || 0,
+                fileExtension: (result.metadata.fileExtension as string) || '',
+                metadata: result.metadata,
+            },
+            score: result.rrfScore, // Use RRF score as the final score
+        }));
     }
 
     async delete(collectionName: string, ids: string[]): Promise<void> {
@@ -791,6 +1022,13 @@ export class ChromaVectorDatabase implements VectorDatabase {
         } catch (error) {
             console.error(`❌ Failed to delete documents from collection '${collectionName}':`, error);
             throw error;
+        }
+        
+        // Also remove from BM25 index if this is a hybrid collection
+        if (this.hybridCollections.has(sanitizedName)) {
+            await this.bm25IndexManager.removeDocuments(sanitizedName, ids);
+            await this.bm25IndexManager.saveIndex(sanitizedName);
+            console.log(`✅ Removed ${ids.length} documents from BM25 index`);
         }
     }
 
@@ -924,10 +1162,39 @@ export class ChromaVectorDatabase implements VectorDatabase {
      * Clean up resources and stop the server if we started it
      */
     async close(): Promise<void> {
+        // Save any dirty BM25 indexes before closing
+        await this.bm25IndexManager.saveAllDirtyIndexes();
+        this.bm25IndexManager.clearAllIndexes();
+        this.hybridCollections.clear();
+        
         this.client = null;
         console.log('🔌 ChromaDB client connection closed');
         
         // Stop the server if we started it
         this.stopServer();
+    }
+    
+    /**
+     * Get BM25 index statistics for a collection
+     * Useful for debugging and testing
+     */
+    getBM25Stats(collectionName: string): { documentCount: number; termCount: number; avgDocLength: number } | null {
+        const sanitizedName = this.sanitizeCollectionName(collectionName);
+        return this.bm25IndexManager.getIndexStats(sanitizedName);
+    }
+    
+    /**
+     * Check if BM25 hybrid search is enabled
+     */
+    isBM25Enabled(): boolean {
+        return this.enableBM25;
+    }
+    
+    /**
+     * Check if a collection has BM25 indexing
+     */
+    isHybridCollection(collectionName: string): boolean {
+        const sanitizedName = this.sanitizeCollectionName(collectionName);
+        return this.hybridCollections.has(sanitizedName);
     }
 }
