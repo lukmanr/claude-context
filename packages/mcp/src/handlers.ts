@@ -207,14 +207,16 @@ export class ToolHandlers {
                 };
             }
 
-            // Check if already indexing
+            // Check if already indexing - return in-progress status (not error) so callers can poll
             if (this.snapshotManager.getIndexingCodebases().includes(absolutePath)) {
+                const info = this.snapshotManager.getCodebaseInfo(absolutePath);
+                const progress = info && 'indexingPercentage' in info ? (info as any).indexingPercentage : 0;
                 return {
                     content: [{
                         type: "text",
-                        text: `Codebase '${absolutePath}' is already being indexed in the background. Please wait for completion.`
+                        text: `Codebase '${absolutePath}' is already being indexed in the background. Progress: ${progress}%. You can search while indexing continues; results may be incomplete until indexing completes.`
                     }],
-                    isError: true
+                    isError: false
                 };
             }
 

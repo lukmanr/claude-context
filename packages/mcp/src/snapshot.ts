@@ -71,10 +71,10 @@ export class SnapshotManager {
 
         for (const codebasePath of indexingCodebasesList) {
             if (fs.existsSync(codebasePath)) {
-                console.warn(`[SNAPSHOT-DEBUG] Found interrupted indexing codebase: ${codebasePath}. Treating as not indexed.`);
+                console.debug(`[SNAPSHOT-DEBUG] Found interrupted indexing codebase: ${codebasePath}. Treating as not indexed.`);
                 // Don't add to validIndexingCodebases - treat as not indexed
             } else {
-                console.warn(`[SNAPSHOT-DEBUG] Interrupted indexing codebase no longer exists: ${codebasePath}`);
+                console.debug(`[SNAPSHOT-DEBUG] Interrupted indexing codebase no longer exists: ${codebasePath}`);
             }
         }
 
@@ -128,7 +128,7 @@ export class SnapshotManager {
                 if ('indexingPercentage' in info) {
                     validIndexingCodebases.set(codebasePath, info.indexingPercentage);
                 }
-                console.warn(`[SNAPSHOT-DEBUG] Found interrupted indexing codebase: ${codebasePath} (${info.indexingPercentage || 0}%). Treating as not indexed.`);
+                console.debug(`[SNAPSHOT-DEBUG] Found interrupted indexing codebase: ${codebasePath} (${info.indexingPercentage || 0}%). Treating as not indexed.`);
                 // Don't add to indexed - treat interrupted indexing as not indexed
             } else if (info.status === 'indexfailed') {
                 console.warn(`[SNAPSHOT-DEBUG] Found failed indexing codebase: ${codebasePath}. Error: ${info.errorMessage}`);
