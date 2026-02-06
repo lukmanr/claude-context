@@ -41,11 +41,21 @@ export class AstCodeSplitter implements Splitter {
         this.langchainFallback = new LangChainCodeSplitter(chunkSize, chunkOverlap);
     }
 
+    // Max file size for AST parsing (500KB). Larger files often cause tree-sitter
+    // "Invalid argument" errors and are better handled by the LangChain splitter.
+    private static readonly MAX_AST_FILE_SIZE = 500 * 1024;
+
     async split(code: string, language: string, filePath?: string): Promise<CodeChunk[]> {
         // Check if language is supported by AST splitter
         const langConfig = this.getLanguageConfig(language);
         if (!langConfig) {
             console.log(`📝 Language ${language} not supported by AST, using LangChain splitter for: ${filePath || 'unknown'}`);
+            return await this.langchainFallback.split(code, language, filePath);
+        }
+
+        // Skip AST parsing for very large files - tree-sitter can fail with "Invalid argument"
+        if (code.length > AstCodeSplitter.MAX_AST_FILE_SIZE) {
+            console.log(`📝 File too large for AST splitter (${Math.round(code.length / 1024)}KB), using LangChain: ${filePath || 'unknown'}`);
             return await this.langchainFallback.split(code, language, filePath);
         }
 
