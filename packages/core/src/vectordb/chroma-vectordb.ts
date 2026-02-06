@@ -198,10 +198,42 @@ export class ChromaVectorDatabase implements VectorDatabase {
     }
 
     /**
+     * Kill any stale process occupying the ChromaDB port.
+     * This prevents "address already in use" failures when restarting.
+     */
+    private killStaleProcessOnPort(): void {
+        try {
+            if (process.platform === 'win32') {
+                const { execSync } = require('child_process');
+                const result = execSync(`netstat -ano | findstr :${this.chromaPort}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] });
+                const lines = result.split('\n').filter((line: string) => line.includes('LISTENING'));
+                for (const line of lines) {
+                    const parts = line.trim().split(/\s+/);
+                    const pid = parts[parts.length - 1];
+                    if (pid && !isNaN(parseInt(pid))) {
+                        execSync(`taskkill /pid ${pid} /f /t`, { stdio: 'ignore' });
+                    }
+                }
+            } else {
+                const { execSync } = require('child_process');
+                // Try SIGTERM first for graceful shutdown
+                execSync(`lsof -ti:${this.chromaPort} | xargs kill -15 2>/dev/null || true`, { stdio: 'ignore' });
+                // Brief pause, then force kill any remaining
+                execSync(`sleep 0.5 && lsof -ti:${this.chromaPort} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+            }
+        } catch {
+            // No process on port or command failed - that's fine
+        }
+    }
+
+    /**
      * Start the ChromaDB server process
      * Uses the chromadb npm package's native bindings (Rust-compiled)
      */
     private async startServer(): Promise<void> {
+        // Kill any stale process on our port before attempting to start
+        this.killStaleProcessOnPort();
+
         return new Promise((resolve, reject) => {
             const isWindows = process.platform === 'win32';
 
