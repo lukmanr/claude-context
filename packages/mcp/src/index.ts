@@ -275,6 +275,80 @@ This tool is versatile and can be used before completing various tasks to retrie
                             required: ["path"]
                         }
                     },
+                    {
+                        name: "index_bm25",
+                        description: `Index a codebase for BM25-only (keyword-based) search WITHOUT generating embeddings.
+
+🚀 **Performance**: This is ~6-15x FASTER than full indexing because it skips embedding generation.
+   - 192 files: ~10-15 seconds (vs 60-170s for full indexing)
+
+🎯 **Use Case**: Create a lightweight keyword index for fast pre-filtering before expensive vector searches.
+   - Ideal for quick relevance checks on large codebases
+   - Perfect for topic-based document filtering
+
+⚠️ **IMPORTANT**: You MUST provide an absolute path.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `ABSOLUTE path to the codebase directory to index.`
+                                },
+                                customExtensions: {
+                                    type: "array",
+                                    items: {
+                                        type: "string"
+                                    },
+                                    description: "Optional: Additional file extensions to include beyond defaults",
+                                    default: []
+                                },
+                                ignorePatterns: {
+                                    type: "array",
+                                    items: {
+                                        type: "string"
+                                    },
+                                    description: "Optional: Additional ignore patterns to exclude specific files/directories",
+                                    default: []
+                                }
+                            },
+                            required: ["path"]
+                        }
+                    },
+                    {
+                        name: "search_bm25",
+                        description: `Search using BM25 only (fast keyword-based search WITHOUT generating embeddings).
+
+🚀 **Performance**: Much faster than vector search - no embedding generation needed.
+
+🎯 **Use Case**: Quick pre-filtering to identify relevant documents/chunks before expensive operations.
+   - Find documents containing specific keywords/terms
+   - Filter large codebases to relevant subsets
+   - Perform topic-based document discovery
+
+⚠️ **IMPORTANT**: 
+   - Requires a BM25 index (use index_bm25 first)
+   - You MUST provide an absolute path`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `ABSOLUTE path to the codebase directory to search in.`
+                                },
+                                query: {
+                                    type: "string",
+                                    description: "Keyword query to search for in the BM25 index"
+                                },
+                                limit: {
+                                    type: "number",
+                                    description: "Maximum number of results to return",
+                                    default: 20,
+                                    maximum: 100
+                                }
+                            },
+                            required: ["path", "query"]
+                        }
+                    },
                 ]
             };
         });
@@ -292,6 +366,10 @@ This tool is versatile and can be used before completing various tasks to retrie
                     return await this.toolHandlers.handleClearIndex(args);
                 case "get_indexing_status":
                     return await this.toolHandlers.handleGetIndexingStatus(args);
+                case "index_bm25":
+                    return await this.toolHandlers.handleIndexBM25(args);
+                case "search_bm25":
+                    return await this.toolHandlers.handleSearchBM25(args);
 
                 default:
                     throw new Error(`Unknown tool: ${name}`);

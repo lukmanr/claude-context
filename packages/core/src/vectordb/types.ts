@@ -131,6 +131,57 @@ export interface VectorDatabase {
      * Returns true if collection can be created, false if limit exceeded
      */
     checkCollectionLimit(): Promise<boolean>;
+
+    /**
+     * Add documents to BM25 index only (without vector embeddings)
+     * This is useful for fast pre-filtering before more expensive vector search.
+     * 
+     * @param collectionName Collection name
+     * @param documents Documents with id and content
+     */
+    addBM25Documents?(collectionName: string, documents: Array<{ id: string; content: string }>): Promise<void>;
+
+    /**
+     * Search using BM25 only (keyword-based search without embeddings)
+     * This is useful for fast pre-filtering to identify relevant documents.
+     * 
+     * @param collectionName Collection name
+     * @param query Search query text
+     * @param limit Maximum number of results
+     * @returns Array of search results with document IDs and BM25 scores
+     */
+    searchBM25?(collectionName: string, query: string, limit?: number): Promise<BM25SearchResult[]>;
+
+    /**
+     * Check if a BM25 index exists for a collection
+     * 
+     * @param collectionName Collection name
+     */
+    hasBM25Index?(collectionName: string): Promise<boolean>;
+
+    /**
+     * Load a BM25 index from disk if it exists
+     * 
+     * @param collectionName Collection name
+     */
+    loadBM25Index?(collectionName: string): Promise<boolean>;
+
+    /**
+     * Save a BM25 index to disk
+     * 
+     * @param collectionName Collection name
+     */
+    saveBM25Index?(collectionName: string): Promise<void>;
+}
+
+/**
+ * BM25 search result (for BM25-only searches)
+ */
+export interface BM25SearchResult {
+    /** Document ID */
+    id: string;
+    /** BM25 score */
+    score: number;
 }
 
 /**

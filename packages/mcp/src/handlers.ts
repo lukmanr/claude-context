@@ -821,4 +821,184 @@ export class ToolHandlers {
             };
         }
     }
+
+    /**
+     * Handle index_bm25 tool - Index a codebase for BM25-only search (fast, no embeddings)
+     * 
+     * This creates a lightweight BM25 index that can be used for fast keyword-based
+     * pre-filtering before more expensive vector searches. Approximately 6-15x faster
+     * than full indexing because it skips embedding generation.
+     */
+    public async handleIndexBM25(args: any) {
+        const { path: codebasePath, customExtensions, ignorePatterns } = args;
+        const customFileExtensions = customExtensions || [];
+        const customIgnorePatterns = ignorePatterns || [];
+
+        try {
+            // Force absolute path resolution
+            const absolutePath = ensureAbsolutePath(codebasePath);
+
+            // Validate path exists
+            if (!fs.existsSync(absolutePath)) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: Path '${absolutePath}' does not exist. Original input: '${codebasePath}'`
+                    }],
+                    isError: true
+                };
+            }
+
+            // Check if it's a directory
+            const stat = fs.statSync(absolutePath);
+            if (!stat.isDirectory()) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: Path '${absolutePath}' is not a directory`
+                    }],
+                    isError: true
+                };
+            }
+
+            // Add custom extensions if provided
+            if (customFileExtensions.length > 0) {
+                console.log(`[BM25-INDEX] Adding ${customFileExtensions.length} custom extensions: ${customFileExtensions.join(', ')}`);
+                this.context.addCustomExtensions(customFileExtensions);
+            }
+
+            // Add custom ignore patterns if provided
+            if (customIgnorePatterns.length > 0) {
+                console.log(`[BM25-INDEX] Adding ${customIgnorePatterns.length} custom ignore patterns: ${customIgnorePatterns.join(', ')}`);
+                this.context.addCustomIgnorePatterns(customIgnorePatterns);
+            }
+
+            console.log(`[BM25-INDEX] 🚀 Starting BM25-only indexing for: ${absolutePath}`);
+            const startTime = Date.now();
+
+            const stats = await this.context.indexBM25Only(absolutePath, (progress) => {
+                console.log(`[BM25-INDEX] Progress: ${progress.phase} - ${progress.percentage}% (${progress.current}/${progress.total})`);
+            });
+
+            const duration = Date.now() - startTime;
+
+            let message = `BM25-only indexing completed for '${absolutePath}' in ${(duration / 1000).toFixed(1)}s.\nIndexed ${stats.indexedFiles} files, ${stats.totalChunks} chunks.`;
+            if (stats.status === 'limit_reached') {
+                message += `\n⚠️  Warning: Indexing stopped because the chunk limit was reached. The index may be incomplete.`;
+            }
+
+            console.log(`[BM25-INDEX] ✅ ${message}`);
+
+            return {
+                content: [{
+                    type: "text",
+                    text: message
+                }]
+            };
+
+        } catch (error: any) {
+            console.error('[BM25-INDEX] Error:', error);
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error during BM25 indexing: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Handle search_bm25 tool - Search using BM25 only (fast keyword-based search)
+     * 
+     * This performs a fast keyword-based search without generating embeddings.
+     * Use this for quick pre-filtering to identify relevant files/chunks before
+     * more expensive vector searches.
+     */
+    public async handleSearchBM25(args: any) {
+        const { path: codebasePath, query, limit = 20 } = args;
+        const resultLimit = Math.min(limit || 20, 100);
+
+        try {
+            // Force absolute path resolution
+            const absolutePath = ensureAbsolutePath(codebasePath);
+
+            // Validate path exists
+            if (!fs.existsSync(absolutePath)) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: Path '${absolutePath}' does not exist. Original input: '${codebasePath}'`
+                    }],
+                    isError: true
+                };
+            }
+
+            // Check if it's a directory
+            const stat = fs.statSync(absolutePath);
+            if (!stat.isDirectory()) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: Path '${absolutePath}' is not a directory`
+                    }],
+                    isError: true
+                };
+            }
+
+            // Check if BM25 index exists
+            const hasBM25Index = await this.context.hasBM25Index(absolutePath);
+            if (!hasBM25Index) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: No BM25 index found for '${absolutePath}'. Please create one first using the index_bm25 tool.`
+                    }],
+                    isError: true
+                };
+            }
+
+            console.log(`[BM25-SEARCH] 🔍 Searching in: ${absolutePath}`);
+            console.log(`[BM25-SEARCH] 🔍 Query: "${query}"`);
+
+            const startTime = Date.now();
+            const results = await this.context.searchBM25Only(absolutePath, query, resultLimit);
+            const duration = Date.now() - startTime;
+
+            if (results.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `No BM25 matches found for query: "${query}" in '${absolutePath}'`
+                    }]
+                };
+            }
+
+            // Format results
+            const formattedResults = results.map((result, index) => {
+                return `${index + 1}. Document ID: ${result.id}\n   BM25 Score: ${result.score.toFixed(4)}`;
+            }).join('\n\n');
+
+            const resultMessage = `BM25 search completed in ${duration}ms. Found ${results.length} results for query: "${query}"\n\n${formattedResults}`;
+
+            console.log(`[BM25-SEARCH] ✅ Found ${results.length} results in ${duration}ms`);
+
+            return {
+                content: [{
+                    type: "text",
+                    text: resultMessage
+                }]
+            };
+
+        } catch (error: any) {
+            console.error('[BM25-SEARCH] Error:', error);
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error during BM25 search: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
 } 

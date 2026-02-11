@@ -1229,4 +1229,105 @@ export class ChromaVectorDatabase implements VectorDatabase {
         const sanitizedName = this.sanitizeCollectionName(collectionName);
         return this.hybridCollections.has(sanitizedName);
     }
+
+    /**
+     * Add documents to BM25 index only (without vector embeddings)
+     * This is useful for fast pre-filtering before more expensive vector search.
+     * 
+     * @param collectionName Collection name
+     * @param documents Documents with id and content
+     */
+    async addBM25Documents(collectionName: string, documents: Array<{ id: string; content: string }>): Promise<void> {
+        if (!this.enableBM25) {
+            console.warn('[ChromaDB] BM25 is not enabled, skipping addBM25Documents');
+            return;
+        }
+
+        const sanitizedName = this.sanitizeCollectionName(collectionName);
+        console.log(`[ChromaDB] 📝 Adding ${documents.length} documents to BM25-only index for '${collectionName}'`);
+        
+        await this.bm25IndexManager.addDocuments(sanitizedName, documents);
+        
+        // Save the index to disk
+        await this.bm25IndexManager.saveIndex(sanitizedName);
+        
+        const stats = this.bm25IndexManager.getIndexStats(sanitizedName);
+        if (stats) {
+            console.log(`[ChromaDB] ✅ BM25-only index updated: ${stats.documentCount} docs, ${stats.termCount} terms`);
+        }
+    }
+
+    /**
+     * Search using BM25 only (keyword-based search without embeddings)
+     * This is useful for fast pre-filtering to identify relevant documents.
+     * 
+     * @param collectionName Collection name
+     * @param query Search query text
+     * @param limit Maximum number of results
+     * @returns Array of search results with document IDs and BM25 scores
+     */
+    async searchBM25(collectionName: string, query: string, limit: number = 10): Promise<Array<{ id: string; score: number }>> {
+        if (!this.enableBM25) {
+            console.warn('[ChromaDB] BM25 is not enabled, returning empty results');
+            return [];
+        }
+
+        const sanitizedName = this.sanitizeCollectionName(collectionName);
+        
+        // Ensure BM25 index is loaded
+        if (!this.bm25IndexManager.hasIndex(sanitizedName)) {
+            const loaded = await this.bm25IndexManager.loadIndex(sanitizedName);
+            if (!loaded) {
+                console.log(`[ChromaDB] No BM25 index found for '${collectionName}'`);
+                return [];
+            }
+        }
+        
+        console.log(`[ChromaDB] 🔍 BM25-only search in '${collectionName}' for: "${query.substring(0, 50)}${query.length > 50 ? '...' : ''}"`);
+        
+        const results = await this.bm25IndexManager.search(sanitizedName, query, limit);
+        
+        console.log(`[ChromaDB] ✅ BM25 search found ${results.length} results`);
+        
+        return results;
+    }
+
+    /**
+     * Check if a BM25 index exists for a collection
+     * 
+     * @param collectionName Collection name
+     */
+    async hasBM25Index(collectionName: string): Promise<boolean> {
+        if (!this.enableBM25) {
+            return false;
+        }
+        const sanitizedName = this.sanitizeCollectionName(collectionName);
+        return this.bm25IndexManager.hasIndex(sanitizedName);
+    }
+
+    /**
+     * Load a BM25 index from disk if it exists
+     * 
+     * @param collectionName Collection name
+     */
+    async loadBM25Index(collectionName: string): Promise<boolean> {
+        if (!this.enableBM25) {
+            return false;
+        }
+        const sanitizedName = this.sanitizeCollectionName(collectionName);
+        return await this.bm25IndexManager.loadIndex(sanitizedName);
+    }
+
+    /**
+     * Save a BM25 index to disk
+     * 
+     * @param collectionName Collection name
+     */
+    async saveBM25Index(collectionName: string): Promise<void> {
+        if (!this.enableBM25) {
+            return;
+        }
+        const sanitizedName = this.sanitizeCollectionName(collectionName);
+        await this.bm25IndexManager.saveIndex(sanitizedName);
+    }
 }
